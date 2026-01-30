@@ -1,5 +1,3 @@
-html
-
 <!doctype html>
 <html lang="ko">
 <head>
@@ -41,13 +39,8 @@ html
       outline: none;
       font-size: 14px;
     }
-    input:focus, select:focus{
-      border-color: rgba(122,162,255,.75);
-      box-shadow: 0 0 0 3px rgba(122,162,255,.12);
-    }
     .row{ display:grid; grid-template-columns: 1fr; gap: 10px; }
     @media (min-width: 720px){ .row{ grid-template-columns: 1fr 1fr 1fr; } }
-
     .checks{ display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
     .chk{
       display:flex; align-items:center; gap:8px;
@@ -58,7 +51,6 @@ html
       background: rgba(255,255,255,.04);
     }
     .chk input{ width:auto; }
-
     .btns{ display:flex; gap:10px; flex-wrap:wrap; margin-top: 10px; }
     button{
       border:0; border-radius: 14px;
@@ -89,25 +81,14 @@ html
       font-size: 12.5px;
       line-height: 1.55;
     }
-    .pill{
-      display:inline-block; padding: 3px 8px; border-radius: 999px;
-      border: 1px solid rgba(169,183,215,.2);
-      background: rgba(255,255,255,.04);
-      color: var(--muted);
-      font-size: 12px;
-      margin-right: 6px;
-      margin-bottom: 6px;
-    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>📌 한구절묵상 기간 이미지 추출</h1>
     <p class="sub">
-      <span class="pill">① 기간 선택</span>
-      <span class="pill">② 토/일 포함 여부</span>
-      <span class="pill">③ 개별 다운로드 또는 ZIP</span><br/>
-      PDF: <span class="mono">https://www.woorichurch.org/sub/bible/…</span>
+      기본은 월~금(토/일 제외)이며, 체크하면 토/일까지 포함합니다.<br/>
+      ※ “실행이 안 됨”의 1순위 원인은 <b>CORS</b>입니다. 아래 “PDF를 GitHub에 올림” 옵션을 사용하면 확실히 해결됩니다.
     </p>
 
     <div class="card">
@@ -134,6 +115,10 @@ html
           <input type="checkbox" id="includeWeekend" />
           토/일 포함
         </label>
+        <label class="chk">
+          <input type="checkbox" id="useLocalPdf" />
+          PDF를 GitHub 저장소에 올려서 사용 (추천)
+        </label>
       </div>
 
       <div class="btns">
@@ -144,23 +129,19 @@ html
       <div class="status" id="status">대기 중…</div>
 
       <div class="hint">
-        • 기본: 월~금만 다운로드 (토/일 제외)<br/>
-        • PDF 매핑 규칙: 1~4p는 설명, 5p부터 1일 시작<br/>
-        • 2개월 PDF 가정: 둘째 달은 <span class="mono">4 + (첫달일수) + day</span> 페이지로 계산<br/>
-        • 만약 “로컬 파일로 열었을 때” 안 되면, GitHub Pages(https)로 실행하는 게 가장 안정적입니다.
+        • 페이지 매핑: 1~4p는 설명, 5p부터 1일 시작 → <span class="mono">page = 4 + day</span><br/>
+        • 2개월 PDF에서 둘째 달: <span class="mono">page = 4 + (첫달일수) + day</span><br/>
+        • “PDF를 GitHub 저장소에 올림”을 체크하면 <span class="mono">./pdf/YYYY/...</span> 경로로 읽습니다.
       </div>
     </div>
 
     <canvas id="canvas"></canvas>
   </div>
 
-  <!-- pdf.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
-  <!-- JSZip -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
   <script>
-    // ✅ pdf.js 워커 설정 (이거 빠지면 실행 안 되는 경우가 많음)
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js";
 
@@ -168,23 +149,7 @@ html
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d", { alpha: false });
 
-    // 사이트 규칙: 2개월 단위 PDF (2페이지짜리)
-    // 예시: https://www.woorichurch.org/sub/bible/2026/2026_ov_1-2(2).pdf
-    function buildPdfUrl(year, startMonth){
-      const raw = `https://www.woorichurch.org/sub/bible/${year}/${year}_ov_${startMonth}-${startMonth+1}(2).pdf`;
-      // 괄호 인코딩(로컬/일부 브라우저에서 문제 방지)
-      return raw.replaceAll("(", "%28").replaceAll(")", "%29");
-    }
-
     function setStatus(msg){ statusEl.textContent = msg; }
-
-    function parseDateInput(id){
-      const v = document.getElementById(id).value;
-      if(!v) return null;
-      const d = new Date(v + "T00:00:00");
-      if(isNaN(d)) return null;
-      return d;
-    }
 
     function ymd(d){
       const y = d.getFullYear();
@@ -193,11 +158,17 @@ html
       return `${y}-${m}-${day}`;
     }
 
-    function daysInMonth(year, month1to12){
-      return new Date(year, month1to12, 0).getDate(); // month is 1..12
+    function parseDateInput(id){
+      const v = document.getElementById(id).value;
+      if(!v) return null;
+      const d = new Date(v + "T00:00:00");
+      return isNaN(d) ? null : d;
     }
 
-    // 2개월 그룹의 시작월(홀수) 계산: 1-2, 3-4, ...
+    function daysInMonth(year, month1to12){
+      return new Date(year, month1to12, 0).getDate();
+    }
+
     function groupStartMonth(month1to12){
       return (month1to12 % 2 === 1) ? month1to12 : month1to12 - 1;
     }
@@ -215,47 +186,51 @@ html
       return (w === 0 || w === 6);
     }
 
-    // 날짜 -> (pdfKey, pdfUrl, pageNumber, fileName)
+    function encodeParens(url){
+      return url.replaceAll("(", "%28").replaceAll(")", "%29");
+    }
+
+    // ✅ 원본(교회) PDF URL
+    function buildRemotePdfUrl(year, startMonth){
+      const raw = `https://www.woorichurch.org/sub/bible/${year}/${year}_ov_${startMonth}-${startMonth+1}(2).pdf`;
+      return encodeParens(raw);
+    }
+
+    // ✅ GitHub 저장소에 올린 PDF 상대경로 (repo에 pdf/연도/파일.pdf 형태로 넣는 가정)
+    function buildLocalPdfUrl(year, startMonth){
+      const raw = `./pdf/${year}/${year}_ov_${startMonth}-${startMonth+1}(2).pdf`;
+      return encodeParens(raw);
+    }
+
     function planForDate(d){
       const year = d.getFullYear();
-      const month = d.getMonth()+1; // 1..12
+      const month = d.getMonth()+1;
       const day = d.getDate();
 
       const startM = groupStartMonth(month);
       const secondM = startM + 1;
-
       const firstMonthDays = daysInMonth(year, startM);
 
       let pageNumber;
-      if(month === startM){
-        pageNumber = 4 + day;
-      } else if(month === secondM){
-        pageNumber = 4 + firstMonthDays + day;
-      } else {
-        // 이론상 발생하면 안 됨
-        pageNumber = 4 + day;
-      }
+      if(month === startM) pageNumber = 4 + day;
+      else if(month === secondM) pageNumber = 4 + firstMonthDays + day;
+      else pageNumber = 4 + day;
 
-      const pdfUrl = buildPdfUrl(year, startM);
       const pdfKey = `${year}-${String(startM).padStart(2,"0")}`;
-
       const fileName = `${ymd(d)}.png`;
-
-      return { pdfKey, pdfUrl, pageNumber, fileName };
+      return { year, startM, pdfKey, pageNumber, fileName };
     }
 
     async function loadPdf(pdfUrl){
-      // 일부 환경에서 CORS/Origin 문제 가능. GitHub Pages(https)에서 실행 권장.
+      // pdf.js 내부 fetch 사용
       return await pdfjsLib.getDocument({ url: pdfUrl }).promise;
     }
 
     async function renderPageToDataUrl(pdf, pageNumber, scale){
       const page = await pdf.getPage(pageNumber);
       const viewport = page.getViewport({ scale });
-
       canvas.width = Math.floor(viewport.width);
       canvas.height = Math.floor(viewport.height);
-
       await page.render({ canvasContext: ctx, viewport }).promise;
       return canvas.toDataURL("image/png");
     }
@@ -272,9 +247,8 @@ html
     function validateRange(start, end){
       if(!start || !end) return "시작/종료 날짜를 모두 선택해주세요.";
       if(end < start) return "종료 날짜는 시작 날짜보다 빠를 수 없어요.";
-      // 너무 큰 범위는 모바일에서 무거울 수 있어 제한(원하면 늘려도 됨)
       const diffDays = Math.floor((end - start) / (24*3600*1000)) + 1;
-      if(diffDays > 70) return "기간이 너무 깁니다(최대 70일). 범위를 줄여주세요.";
+      if(diffDays > 90) return "기간이 너무 깁니다(최대 90일). 범위를 줄여주세요.";
       return null;
     }
 
@@ -282,18 +256,17 @@ html
       const start = parseDateInput("startDate");
       const end = parseDateInput("endDate");
       const includeWeekend = document.getElementById("includeWeekend").checked;
+      const useLocalPdf = document.getElementById("useLocalPdf").checked;
       const scale = Number(document.getElementById("quality").value || "2");
 
       const err = validateRange(start, end);
       if(err){ alert(err); return; }
 
-      // 날짜 목록 생성 + (기본: 주말 제외)
       const dates = [];
       for(const d of dateRange(start, end)){
         if(!includeWeekend && isWeekend(d)) continue;
         dates.push(d);
       }
-
       if(dates.length === 0){
         alert("선택된 기간에서 다운로드할 날짜가 없습니다. (주말 제외 설정 확인)");
         return;
@@ -301,21 +274,23 @@ html
 
       setStatus(`준비 중…
 기간: ${ymd(start)} ~ ${ymd(end)}
-대상 날짜 수: ${dates.length}개
-모드: ${zipMode ? "ZIP" : "개별 다운로드"}
+대상: ${dates.length}개
+모드: ${zipMode ? "ZIP" : "개별"}
+PDF 소스: ${useLocalPdf ? "GitHub(로컬)" : "교회(원본)"}
 해상도: ${scale}x`);
 
-      // PDF별로 묶어서 한 번만 로드
+      // PDF별로 묶기
       const groups = new Map(); // pdfKey -> { pdfUrl, items: [] }
       for(const d of dates){
         const p = planForDate(d);
+        const pdfUrl = useLocalPdf ? buildLocalPdfUrl(p.year, p.startM) : buildRemotePdfUrl(p.year, p.startM);
+
         if(!groups.has(p.pdfKey)){
-          groups.set(p.pdfKey, { pdfUrl: p.pdfUrl, items: [] });
+          groups.set(p.pdfKey, { pdfUrl, items: [] });
         }
-        groups.get(p.pdfKey).items.push(p);
+        groups.get(p.pdfKey).items.push({ pageNumber: p.pageNumber, fileName: p.fileName });
       }
 
-      // ZIP 준비
       const zip = zipMode ? new JSZip() : null;
 
       try{
@@ -324,15 +299,14 @@ html
 
         for(const [pdfKey, group] of groups.entries()){
           setStatus(`PDF 불러오는 중…
-(${pdfKey}) ${group.pdfUrl}`);
+${pdfKey}
+${group.pdfUrl}`);
 
           const pdf = await loadPdf(group.pdfUrl);
 
-          // 같은 PDF 내 여러 페이지 추출
           for(const item of group.items){
             setStatus(`이미지 생성 중… (${done+1}/${total})
-PDF: ${pdfKey}
-page: ${item.pageNumber}
+PDF: ${pdfKey} / page: ${item.pageNumber}
 file: ${item.fileName}`);
 
             const dataUrl = await renderPageToDataUrl(pdf, item.pageNumber, scale);
@@ -341,10 +315,8 @@ file: ${item.fileName}`);
               zip.file(item.fileName, dataUrl.split(",")[1], { base64: true });
             }else{
               downloadDataUrl(dataUrl, item.fileName);
-              // 모바일에서 연속 다운로드가 너무 빠르면 일부 브라우저가 막을 수 있어 약간 텀
               await new Promise(r => setTimeout(r, 250));
             }
-
             done++;
           }
         }
@@ -372,19 +344,19 @@ file: ${item.fileName}`);
       }catch(e){
         console.error(e);
         setStatus(`오류 ⚠️
-${e && e.message ? e.message : String(e)}
+${e?.message || String(e)}
 
-※ 만약 "CORS/Origin" 관련 오류라면:
-- 로컬(file://)로 열지 말고 GitHub Pages(https)에서 실행해보세요.
-- 또는 PDF를 GitHub 저장소에 함께 올려(같은 도메인) 불러오면 100% 안정적입니다.`);
-        alert("처리 중 오류가 발생했습니다. 상태 메시지를 확인해주세요.");
+가능한 원인:
+1) (가장 흔함) 교회 PDF 서버가 CORS를 허용하지 않음 → "PDF를 GitHub 저장소에 올림" 체크 후 사용
+2) 로컬(file://)로 열어서 Origin이 null이라 차단됨 → GitHub Pages(https)에서 실행 권장
+3) 모바일에서 연속 다운로드가 차단됨 → ZIP 모드 사용 권장`);
+        alert("오류가 발생했습니다. 상태 메시지와 (PC면) 콘솔을 확인해주세요.");
       }
     }
 
     document.getElementById("btnEach").addEventListener("click", () => run({ zipMode:false }));
     document.getElementById("btnZip").addEventListener("click", () => run({ zipMode:true }));
 
-    // 기본값: 오늘 ~ 오늘, 주말 제외
     (function initDefaults(){
       const today = new Date();
       const t = ymd(today);
