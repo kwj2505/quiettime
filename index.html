@@ -1,0 +1,397 @@
+html
+
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>한구절묵상 기간 이미지 추출</title>
+  <style>
+    :root{
+      --bg:#070a14; --card:#0e1733; --muted:#a9b7d7; --text:#eef3ff;
+      --accent:#7aa2ff; --border: rgba(122,162,255,.18);
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0; padding:18px 14px;
+      font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", Segoe UI, Roboto, Arial;
+      background: radial-gradient(1000px 600px at 20% 0%, rgba(122,162,255,.18), transparent 60%),
+                  linear-gradient(180deg, #050712, #070a14 30%, #050712);
+      color: var(--text);
+    }
+    .wrap{ max-width: 760px; margin:0 auto; }
+    h1{ margin:0 0 8px; font-size: 18px; }
+    .sub{ margin:0 0 14px; color: var(--muted); font-size: 13px; line-height:1.5; }
+    .card{
+      background: rgba(14,23,51,.92);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      box-shadow: 0 12px 28px rgba(0,0,0,.28);
+      margin-bottom: 12px;
+    }
+    label{ display:block; font-size: 12px; color: var(--muted); margin: 10px 0 6px; }
+    input, select{
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid rgba(169,183,215,.22);
+      background: rgba(4,8,18,.65);
+      color: var(--text);
+      padding: 11px 12px;
+      outline: none;
+      font-size: 14px;
+    }
+    input:focus, select:focus{
+      border-color: rgba(122,162,255,.75);
+      box-shadow: 0 0 0 3px rgba(122,162,255,.12);
+    }
+    .row{ display:grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 720px){ .row{ grid-template-columns: 1fr 1fr 1fr; } }
+
+    .checks{ display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
+    .chk{
+      display:flex; align-items:center; gap:8px;
+      font-size: 13px; color: var(--muted);
+      padding: 8px 10px;
+      border: 1px solid rgba(169,183,215,.18);
+      border-radius: 999px;
+      background: rgba(255,255,255,.04);
+    }
+    .chk input{ width:auto; }
+
+    .btns{ display:flex; gap:10px; flex-wrap:wrap; margin-top: 10px; }
+    button{
+      border:0; border-radius: 14px;
+      padding: 12px 12px;
+      cursor:pointer;
+      font-weight: 900;
+      font-size: 14px;
+      flex:1;
+    }
+    .primary{ background: var(--accent); color:#061028; }
+    .ghost{
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      border: 1px solid rgba(169,183,215,.22);
+    }
+    .status{
+      margin-top: 10px;
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height:1.5;
+      white-space: pre-line;
+    }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    canvas{ display:none; }
+    .hint{
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12.5px;
+      line-height: 1.55;
+    }
+    .pill{
+      display:inline-block; padding: 3px 8px; border-radius: 999px;
+      border: 1px solid rgba(169,183,215,.2);
+      background: rgba(255,255,255,.04);
+      color: var(--muted);
+      font-size: 12px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>📌 한구절묵상 기간 이미지 추출</h1>
+    <p class="sub">
+      <span class="pill">① 기간 선택</span>
+      <span class="pill">② 토/일 포함 여부</span>
+      <span class="pill">③ 개별 다운로드 또는 ZIP</span><br/>
+      PDF: <span class="mono">https://www.woorichurch.org/sub/bible/…</span>
+    </p>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>시작 날짜</label>
+          <input type="date" id="startDate" />
+        </div>
+        <div>
+          <label>종료 날짜</label>
+          <input type="date" id="endDate" />
+        </div>
+        <div>
+          <label>해상도</label>
+          <select id="quality">
+            <option value="2" selected>표준 (모바일/PC 읽기 충분)</option>
+            <option value="3">고해상도 (파일 큼)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="checks">
+        <label class="chk">
+          <input type="checkbox" id="includeWeekend" />
+          토/일 포함
+        </label>
+      </div>
+
+      <div class="btns">
+        <button class="primary" id="btnEach" type="button">📥 개별 이미지 다운로드</button>
+        <button class="ghost" id="btnZip" type="button">📦 ZIP으로 다운로드</button>
+      </div>
+
+      <div class="status" id="status">대기 중…</div>
+
+      <div class="hint">
+        • 기본: 월~금만 다운로드 (토/일 제외)<br/>
+        • PDF 매핑 규칙: 1~4p는 설명, 5p부터 1일 시작<br/>
+        • 2개월 PDF 가정: 둘째 달은 <span class="mono">4 + (첫달일수) + day</span> 페이지로 계산<br/>
+        • 만약 “로컬 파일로 열었을 때” 안 되면, GitHub Pages(https)로 실행하는 게 가장 안정적입니다.
+      </div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <!-- pdf.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
+  <!-- JSZip -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <script>
+    // ✅ pdf.js 워커 설정 (이거 빠지면 실행 안 되는 경우가 많음)
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js";
+
+    const statusEl = document.getElementById("status");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d", { alpha: false });
+
+    // 사이트 규칙: 2개월 단위 PDF (2페이지짜리)
+    // 예시: https://www.woorichurch.org/sub/bible/2026/2026_ov_1-2(2).pdf
+    function buildPdfUrl(year, startMonth){
+      const raw = `https://www.woorichurch.org/sub/bible/${year}/${year}_ov_${startMonth}-${startMonth+1}(2).pdf`;
+      // 괄호 인코딩(로컬/일부 브라우저에서 문제 방지)
+      return raw.replaceAll("(", "%28").replaceAll(")", "%29");
+    }
+
+    function setStatus(msg){ statusEl.textContent = msg; }
+
+    function parseDateInput(id){
+      const v = document.getElementById(id).value;
+      if(!v) return null;
+      const d = new Date(v + "T00:00:00");
+      if(isNaN(d)) return null;
+      return d;
+    }
+
+    function ymd(d){
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,"0");
+      const day = String(d.getDate()).padStart(2,"0");
+      return `${y}-${m}-${day}`;
+    }
+
+    function daysInMonth(year, month1to12){
+      return new Date(year, month1to12, 0).getDate(); // month is 1..12
+    }
+
+    // 2개월 그룹의 시작월(홀수) 계산: 1-2, 3-4, ...
+    function groupStartMonth(month1to12){
+      return (month1to12 % 2 === 1) ? month1to12 : month1to12 - 1;
+    }
+
+    function* dateRange(start, end){
+      const cur = new Date(start);
+      while(cur <= end){
+        yield new Date(cur);
+        cur.setDate(cur.getDate() + 1);
+      }
+    }
+
+    function isWeekend(d){
+      const w = d.getDay(); // 0 Sun ... 6 Sat
+      return (w === 0 || w === 6);
+    }
+
+    // 날짜 -> (pdfKey, pdfUrl, pageNumber, fileName)
+    function planForDate(d){
+      const year = d.getFullYear();
+      const month = d.getMonth()+1; // 1..12
+      const day = d.getDate();
+
+      const startM = groupStartMonth(month);
+      const secondM = startM + 1;
+
+      const firstMonthDays = daysInMonth(year, startM);
+
+      let pageNumber;
+      if(month === startM){
+        pageNumber = 4 + day;
+      } else if(month === secondM){
+        pageNumber = 4 + firstMonthDays + day;
+      } else {
+        // 이론상 발생하면 안 됨
+        pageNumber = 4 + day;
+      }
+
+      const pdfUrl = buildPdfUrl(year, startM);
+      const pdfKey = `${year}-${String(startM).padStart(2,"0")}`;
+
+      const fileName = `${ymd(d)}.png`;
+
+      return { pdfKey, pdfUrl, pageNumber, fileName };
+    }
+
+    async function loadPdf(pdfUrl){
+      // 일부 환경에서 CORS/Origin 문제 가능. GitHub Pages(https)에서 실행 권장.
+      return await pdfjsLib.getDocument({ url: pdfUrl }).promise;
+    }
+
+    async function renderPageToDataUrl(pdf, pageNumber, scale){
+      const page = await pdf.getPage(pageNumber);
+      const viewport = page.getViewport({ scale });
+
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      return canvas.toDataURL("image/png");
+    }
+
+    function downloadDataUrl(dataUrl, filename){
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    function validateRange(start, end){
+      if(!start || !end) return "시작/종료 날짜를 모두 선택해주세요.";
+      if(end < start) return "종료 날짜는 시작 날짜보다 빠를 수 없어요.";
+      // 너무 큰 범위는 모바일에서 무거울 수 있어 제한(원하면 늘려도 됨)
+      const diffDays = Math.floor((end - start) / (24*3600*1000)) + 1;
+      if(diffDays > 70) return "기간이 너무 깁니다(최대 70일). 범위를 줄여주세요.";
+      return null;
+    }
+
+    async function run({ zipMode }){
+      const start = parseDateInput("startDate");
+      const end = parseDateInput("endDate");
+      const includeWeekend = document.getElementById("includeWeekend").checked;
+      const scale = Number(document.getElementById("quality").value || "2");
+
+      const err = validateRange(start, end);
+      if(err){ alert(err); return; }
+
+      // 날짜 목록 생성 + (기본: 주말 제외)
+      const dates = [];
+      for(const d of dateRange(start, end)){
+        if(!includeWeekend && isWeekend(d)) continue;
+        dates.push(d);
+      }
+
+      if(dates.length === 0){
+        alert("선택된 기간에서 다운로드할 날짜가 없습니다. (주말 제외 설정 확인)");
+        return;
+      }
+
+      setStatus(`준비 중…
+기간: ${ymd(start)} ~ ${ymd(end)}
+대상 날짜 수: ${dates.length}개
+모드: ${zipMode ? "ZIP" : "개별 다운로드"}
+해상도: ${scale}x`);
+
+      // PDF별로 묶어서 한 번만 로드
+      const groups = new Map(); // pdfKey -> { pdfUrl, items: [] }
+      for(const d of dates){
+        const p = planForDate(d);
+        if(!groups.has(p.pdfKey)){
+          groups.set(p.pdfKey, { pdfUrl: p.pdfUrl, items: [] });
+        }
+        groups.get(p.pdfKey).items.push(p);
+      }
+
+      // ZIP 준비
+      const zip = zipMode ? new JSZip() : null;
+
+      try{
+        let done = 0;
+        const total = dates.length;
+
+        for(const [pdfKey, group] of groups.entries()){
+          setStatus(`PDF 불러오는 중…
+(${pdfKey}) ${group.pdfUrl}`);
+
+          const pdf = await loadPdf(group.pdfUrl);
+
+          // 같은 PDF 내 여러 페이지 추출
+          for(const item of group.items){
+            setStatus(`이미지 생성 중… (${done+1}/${total})
+PDF: ${pdfKey}
+page: ${item.pageNumber}
+file: ${item.fileName}`);
+
+            const dataUrl = await renderPageToDataUrl(pdf, item.pageNumber, scale);
+
+            if(zipMode){
+              zip.file(item.fileName, dataUrl.split(",")[1], { base64: true });
+            }else{
+              downloadDataUrl(dataUrl, item.fileName);
+              // 모바일에서 연속 다운로드가 너무 빠르면 일부 브라우저가 막을 수 있어 약간 텀
+              await new Promise(r => setTimeout(r, 250));
+            }
+
+            done++;
+          }
+        }
+
+        if(zipMode){
+          setStatus("ZIP 생성 중…");
+          const blob = await zip.generateAsync({ type: "blob" });
+          const url = URL.createObjectURL(blob);
+          const name = `meditation_${ymd(start)}_${ymd(end)}${includeWeekend ? "_withWeekend" : ""}.zip`;
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+        }
+
+        setStatus(`완료 ✅
+기간: ${ymd(start)} ~ ${ymd(end)}
+다운로드: ${dates.length}개
+주말 포함: ${includeWeekend ? "예" : "아니오"}
+모드: ${zipMode ? "ZIP" : "개별"}`);
+
+      }catch(e){
+        console.error(e);
+        setStatus(`오류 ⚠️
+${e && e.message ? e.message : String(e)}
+
+※ 만약 "CORS/Origin" 관련 오류라면:
+- 로컬(file://)로 열지 말고 GitHub Pages(https)에서 실행해보세요.
+- 또는 PDF를 GitHub 저장소에 함께 올려(같은 도메인) 불러오면 100% 안정적입니다.`);
+        alert("처리 중 오류가 발생했습니다. 상태 메시지를 확인해주세요.");
+      }
+    }
+
+    document.getElementById("btnEach").addEventListener("click", () => run({ zipMode:false }));
+    document.getElementById("btnZip").addEventListener("click", () => run({ zipMode:true }));
+
+    // 기본값: 오늘 ~ 오늘, 주말 제외
+    (function initDefaults(){
+      const today = new Date();
+      const t = ymd(today);
+      document.getElementById("startDate").value = t;
+      document.getElementById("endDate").value = t;
+      setStatus("대기 중…\n시작/종료 날짜를 선택하고 다운로드 버튼을 누르세요.");
+    })();
+  </script>
+</body>
+</html>
