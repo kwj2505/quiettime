@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>우리교회 한구절묵상 추출기 (안전모드)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap"
+        rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Noto Sans KR', 'sans-serif'] },
+                    colors: {
+                        church: { 50: '#f0f9ff', 100: '#e0f2fe', 500: '#0ea5e9', 600: '#0284c7', 900: '#0c4a6e' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background: #f3f4f6;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.98);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Drag & Drop Zone Animation */
+        .drag-active {
+            border-color: #0ea5e9 !important;
+            background-color: #f0f9ff !important;
+            transform: scale(1.02);
+        }
+    </style>
+</head>
+
+<body class="text-slate-800 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- Main Container -->
+    <main class="w-full max-w-2xl glass shadow-xl rounded-2xl overflow-hidden">
+        <!-- Header -->
+        <header class="bg-church-600 text-white p-6 text-center">
+            <h1 class="text-2xl font-bold">📖 한구절묵상 이미지 추출기</h1>
+            <p class="text-church-100 text-sm mt-1 opacity-90">안전하고 간편한 PDF 변환 도구 v4.1</p>
+        </header>
+
+        <!-- Content -->
+        <div class="p-6 space-y-8">
+
+            <!-- Step 1: Download & Select -->
+            <div class="space-y-4">
+                <div class="flex items-center gap-2">
+                    <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">Step 1</span>
+                    <h3 class="font-bold text-slate-800">날짜 선택 및 PDF 준비</h3>
+                </div>
+
+                <!-- Date Controls -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1">연도</label>
+                        <input type="number" id="targetYear"
+                            class="w-full p-2 border rounded-lg text-center font-bold text-church-900"
+                            onchange="updateLink()">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1">월 (자동계산)</label>
+                        <select id="targetMonthPair"
+                            class="w-full p-2 border rounded-lg bg-white font-bold text-church-900"
+                            onchange="updateLink()">
+                            <option value="1">1-2월호</option>
+                            <option value="3">3-4월호</option>
+                            <option value="5">5-6월호</option>
+                            <option value="7">7-8월호</option>
+                            <option value="9">9-10월호</option>
+                            <option value="11">11-12월호</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Smart Link Button -->
+                <div class="text-center">
+                    <a id="smartLink" href="#" target="_blank"
+                        class="inline-flex items-center gap-2 text-church-600 hover:text-church-800 font-medium text-sm hover:underline transition">
+                        <span>🔗 이번 달 교회 PDF 다운로드하러 가기</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                        </svg>
+                    </a>
+                    <p class="text-xs text-slate-400 mt-2">
+                        <span class="bg-slate-200 text-slate-700 px-1 rounded text-[10px] font-bold">아이폰 사용자</span>
+                        링크 클릭 → 하단 <span class="font-bold">[공유]</span> 버튼 → <span class="font-bold">[파일에 저장]</span> 후
+                        아래에 넣어주세요.
+                    </p>
+                </div>
+
+                <!-- Drop Zone & Mobile Select -->
+                <div id="dropZone"
+                    class="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 hover:bg-slate-100 transition-all group relative">
+
+                    <!-- Drag Message (PC) -->
+                    <div class="hidden md:flex flex-col items-center pointer-events-none">
+                        <svg class="w-8 h-8 mb-3 text-slate-400 group-hover:text-church-500 transition" fill="none"
+                            stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
+                            </path>
+                        </svg>
+                        <p class="text-sm text-slate-500 font-medium">여기로 PDF 파일을 끌어다 놓으세요</p>
+                    </div>
+
+                    <!-- Mobile/Click Button -->
+                    <button onclick="document.getElementById('pdfFile').click()"
+                        class="md:mt-4 bg-white border border-slate-300 text-slate-700 hover:text-church-600 hover:border-church-400 font-bold py-3 px-6 rounded-full shadow-sm flex items-center gap-2 transition z-10 cursor-pointer">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                        </svg>
+                        📂 PDF 파일 선택하기
+                    </button>
+
+                    <p id="fileNameDisplay" class="text-xs text-slate-400 mt-2">PDF 파일 (.pdf)</p>
+
+                    <!-- Hidden Input: accept='*/*' solves Android 'grayed out' issue -->
+                    <input type="file" id="pdfFile" accept="*/*" class="hidden" onchange="handleFileSelect(this)">
+                </div>
+
+                <!-- Debug/Calibration Info -->
+                <div class="bg-slate-100 p-3 rounded-lg border border-slate-200 text-xs">
+                    <div class="flex justify-between items-center cursor-pointer"
+                        onclick="document.getElementById('debugOpts').classList.toggle('hidden')">
+                        <span class="font-bold text-slate-600">🛠️ 페이지 계산 확인 (고급 설정)</span>
+                        <span class="text-slate-400">▼</span>
+                    </div>
+                    <div id="debugOpts" class="hidden mt-2 space-y-2">
+                        <div class="flex items-center gap-2">
+                            <span>짝수달(2,4..) 시작 보정값:</span>
+                            <input type="number" id="month2Offset" value="0" class="w-16 p-1 border rounded text-center"
+                                onchange="updateDebugInfo()">
+                            <span class="text-slate-400">페이지</span>
+                        </div>
+                        <p class="text-slate-500">※ 짝수달 시작 페이지가 안 맞으면 숫자를 조절하세요. (예: 표지가 있으면 +1)</p>
+                        <div class="bg-white p-2 rounded border mt-1">
+                            <p id="calcPreview" class="font-mono text-church-600">현재 설정 기준:<br>1월 31일 = ??p<br>2월 1일 =
+                                ??p</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="border-slate-200">
+
+            <!-- Step 2: Settings & Extract -->
+            <div class="space-y-4">
+                <div class="flex items-center gap-2">
+                    <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">Step 2</span>
+                    <h3 class="font-bold text-slate-800">기간 설정 및 추출</h3>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1">시작일</label>
+                        <input type="date" id="startDate" class="w-full p-2 border rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1">종료일</label>
+                        <input type="date" id="endDate" class="w-full p-2 border rounded-lg text-sm">
+                    </div>
+                </div>
+
+                <!-- Preset Buttons -->
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <button onclick="setPreset('today')"
+                        class="bg-white border border-slate-300 text-slate-600 font-bold py-2 rounded-lg hover:bg-slate-50 text-sm">📅
+                        오늘</button>
+                    <button onclick="setPreset('tomorrow')"
+                        class="bg-white border border-slate-300 text-slate-600 font-bold py-2 rounded-lg hover:bg-slate-50 text-sm">🌅
+                        내일</button>
+                    <button onclick="setPreset('week')"
+                        class="bg-white border border-slate-300 text-slate-600 font-bold py-2 rounded-lg hover:bg-slate-50 text-sm">🗓️
+                        이번 주</button>
+                    <button onclick="setPreset('nextWeek')"
+                        class="bg-white border border-slate-300 text-slate-600 font-bold py-2 rounded-lg hover:bg-slate-50 text-sm">🔜
+                        다음 주</button>
+                </div>
+
+                <div class="flex items-center space-x-2 px-1">
+                    <input type="checkbox" id="includeWeekend"
+                        class="rounded text-church-600 focus:ring-church-500 w-5 h-5">
+                    <label for="includeWeekend"
+                        class="text-sm text-slate-700 font-medium cursor-pointer select-none">주말(토/일) 및 가정예배 포함</label>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                    <button onclick="processAndDownload('view')" id="btnView"
+                        class="w-full bg-white border-2 border-church-500 text-church-600 hover:bg-church-50 font-bold py-3 px-4 rounded-xl shadow-md transition active:scale-95 flex justify-center items-center gap-2"
+                        disabled>
+                        <span>📱</span> 모바일 보기 (저장)
+                    </button>
+                    <button onclick="processAndDownload('zip')" id="btnDownload"
+                        class="w-full bg-church-600 hover:bg-church-700 text-white font-bold py-3 px-4 rounded-xl shadow-md transition active:scale-95 flex justify-center items-center gap-2"
+                        disabled>
+                        <span>💾</span> ZIP 다운로드
+                    </button>
+                </div>
+            </div>
+
+            <!-- Status & Gallery -->
+            <div id="statusArea"
+                class="hidden bg-slate-800 text-slate-200 p-4 rounded-lg font-mono text-xs max-h-40 overflow-y-auto whitespace-pre-wrap">
+            </div>
+
+            <div id="imageGallery"
+                class="hidden flex flex-col gap-4 mt-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <h3 class="font-bold text-slate-700 text-center">👇 이미지를 꾹 눌러 저장하세요</h3>
+                <div id="galleryGrid" class="grid grid-cols-1 gap-6"></div>
+            </div>
+
+        </div>
+        <footer class="bg-slate-50 border-t p-4 text-center text-xs text-slate-400">
+            Meditation Extractor v4.1 • Mobile Compatible
+        </footer>
+    </main>
+
+    <!-- Hidden Canvas -->
+    <canvas id="renderCanvas" class="hidden"></canvas>
+
+    <script>
+        // --- 1. Initialization ---
+        const today = new Date();
+        const yearInput = document.getElementById('targetYear');
+        const monthSelect = document.getElementById('targetMonthPair');
+
+        // [New] KakaoTalk/In-App Browser Warning
+        if (navigator.userAgent.match(/KAKAOTALK|Instagram|NAVER|Line/i)) {
+            const warning = document.createElement('div');
+            warning.className = "bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 text-sm font-bold shadow-lg";
+            warning.innerHTML = `
+                <p>⚠️ 카카오톡/인앱 브라우저에서는<br>파일 다운로드/선택이 잘 안될 수 있습니다.</p>
+                <p class="mt-2 text-xs font-normal">우측 하단(또는 상단)의 <span class="bg-white border rounded px-1">⋮</span> 버튼을 누르고<br><strong>[다른 브라우저(Chrome/Safari)로 열기]</strong>를 선택해주세요.</p>
+            `;
+            document.querySelector('.glass .p-6').prepend(warning);
+        }
+
+        // Default Logic
+        yearInput.value = today.getFullYear();
+        const m = today.getMonth() + 1;
+        // Map 1->1, 2->1, 3->3, 4->3, etc.
+        const startM = m % 2 !== 0 ? m : m - 1;
+        if ([1, 3, 5, 7, 9, 11].includes(startM)) monthSelect.value = startM;
+
+        document.getElementById('startDate').valueAsDate = today;
+        document.getElementById('endDate').valueAsDate = today;
+
+        updateLink(); // Set initial link
+
+        // --- 2. Smart Link Logic ---
+        function updateLink() {
+            const y = yearInput.value;
+            const m1 = parseInt(monthSelect.value);
+            const m2 = m1 + 1;
+
+            // Generate official URL
+            const fileName = `${y}_ov_${m1}-${m2}(2).pdf`; // e.g., 2026_ov_1-2(2).pdf
+            const url = `https://www.woorichurch.org/sub/bible/${y}/${fileName}`;
+
+            const linkEl = document.getElementById('smartLink');
+            linkEl.href = url;
+            linkEl.innerHTML = `<span>🔗 ${y}년 ${m1}-${m2}월호 다운로드 (교회 홈페이지)</span> <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>`;
+
+            // Update link text for feedback
+            linkEl.onclick = () => {
+                setTimeout(() => alert('PDF 다운로드가 완료되면, 아래 상자에 파일을 넣어주세요!'), 1500);
+            };
+
+            updateDebugInfo();
+        }
+
+        // Debug Info Logic
+        document.getElementById('month2Offset').addEventListener('input', updateDebugInfo);
+
+        function updateDebugInfo() {
+            const y = parseInt(yearInput.value);
+            const m1 = parseInt(monthSelect.value);
+            const m2 = m1 + 1;
+            const offset = parseInt(document.getElementById('month2Offset').value) || 0;
+
+            // Last day of M1
+            const lastM1 = new Date(y, m1, 0); // Month is 0-indexed in Date constructor? No, new Date(y, m, 0) gives last day of month 'm-1'
+            // Wait, Date(y, monthIndex) -> 0=Jan.
+            // new Date(2026, 1, 0) -> Last day of Jan (Month 1).
+            // m1 is 1. new Date(y, m1, 0) -> Jan 31. Correct.
+            const d1 = new Date(y, m1 - 1, new Date(y, m1, 0).getDate());
+
+            // First day of M2
+            const d2 = new Date(y, m1, 1);
+
+            const p1 = getPagesForDate(d1, m1, offset);
+            const p2 = getPagesForDate(d2, m1, offset);
+
+            const p1Str = p1.length ? p1[0].num + 'p' : '?';
+            const p2Str = p2.length ? p2[0].num + 'p' : '?';
+
+            document.getElementById('calcPreview').innerHTML =
+                `${m1}월 말(${d1.getDate()}일): <strong>${p1Str}</strong> (끝)<br>` +
+                `${m2}월 1일: <strong>${p2Str}</strong> (시작)`;
+        }
+
+        // --- 3. File Handling ---
+        let selectedFile = null;
+
+        function handleFileSelect(input) {
+            const file = input.files[0];
+            if (file) setFile(file);
+        }
+
+        function setFile(file) {
+            // Android sometimes gives generic type, so check extension too
+            const isPdfType = file.type === 'application/pdf';
+            const isPdfExt = file.name.toLowerCase().endsWith('.pdf');
+
+            if (!isPdfType && !isPdfExt) {
+                alert('⚠️ PDF 파일만 선택 가능합니다.\n\n선택하신 파일: ' + file.name + '\n(' + (file.type || '알 수 없는 형식') + ')');
+                return;
+            }
+
+            selectedFile = file;
+            document.getElementById('fileNameDisplay').textContent = `✅ 선택됨: ${file.name}`;
+            document.getElementById('fileNameDisplay').className = "text-sm text-church-600 font-bold mt-2";
+            document.getElementById('dropZone').classList.add('bg-blue-50', 'border-church-300');
+
+            // Enable buttons
+            document.getElementById('btnView').disabled = false;
+            document.getElementById('btnDownload').disabled = false;
+        }
+
+        // Drag & Drop
+        const dropZone = document.getElementById('dropZone');
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-active'), false);
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-active'), false);
+        });
+        dropZone.addEventListener('drop', (e) => {
+            const file = e.dataTransfer.files[0];
+            if (file) setFile(file);
+        }, false);
+
+
+        // --- 4. Processing Logic ---
+
+        // Helper: Count Sundays in a month up to specific day
+        function countSundays(year, month, upToDay) {
+            let count = 0;
+            for (let d = 1; d <= upToDay; d++) {
+                if (new Date(year, month - 1, d).getDay() === 0) count++;
+            }
+            return count;
+        }
+
+        // Helper: Total pages consumed by a month (Days + Worship Pages)
+        function getTotalPagesForMonth(year, month) {
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const sundays = countSundays(year, month, daysInMonth);
+            return daysInMonth + sundays;
+        }
+
+        function getPagesForDate(date, startM, extraOffset = 0) {
+            const INTRO_PAGES = 4;
+            const y = date.getFullYear();
+            const m = date.getMonth() + 1;
+            const d = date.getDate();
+
+            // Calculate Start Page offset based on month
+            let basePage = INTRO_PAGES + 1; // Page 5 is start
+
+            if (m === startM + 1) {
+                // If 2nd month, add pages from 1st month
+                basePage += getTotalPagesForMonth(y, startM);
+                basePage += extraOffset; // Apply user offset for month 2
+            } else if (m !== startM) {
+                return []; // Out of range
+            }
+
+            // Calculate offset within the month
+            // Page = Base + (Day-1) + (Sundays passed BEFORE today)
+            // Note: Sunday itself does not add offset yet. The extra page is AFTER Sunday.
+            // So we count Sundays strictly before 'd'.
+            const sundaysBefore = countSundays(y, m, d - 1);
+
+            const mainPage = basePage + (d - 1) + sundaysBefore;
+            const pages = [{ num: mainPage, type: 'daily' }];
+
+            // If Sunday, Worship page is next
+            if (date.getDay() === 0) {
+                pages.push({ num: mainPage + 1, type: 'worship' });
+            }
+
+            return pages;
+        }
+
+        // Preset Logic
+        function setPreset(type) {
+            const includeWeekend = document.getElementById('includeWeekend').checked;
+            const s = document.getElementById('startDate');
+            const e = document.getElementById('endDate');
+            const t = new Date();
+
+            if (type === 'today') {
+                s.valueAsDate = t;
+                e.valueAsDate = t;
+            } else if (type === 'tomorrow') {
+                const tmr = new Date(t);
+                tmr.setDate(tmr.getDate() + 1);
+                s.valueAsDate = tmr;
+                e.valueAsDate = tmr;
+            } else if (type === 'week') {
+                // Find Monday of this week
+                const day = t.getDay(); // 0(Sun) ~ 6(Sat)
+                // If today is Sunday(0), "This Week" usually means PREV Monday? Or NEXT Monday?
+                // Standard ISO: Mon is 1. If Sun(0), prev Mon is today-6.
+                // Let's assume standard church week: Mon ~ Sun.
+                const diff = t.getDate() - day + (day == 0 ? -6 : 1);
+                const monday = new Date(t);
+                monday.setDate(diff);
+
+                s.valueAsDate = monday;
+
+                // End date
+                const endOffset = includeWeekend ? 6 : 4;
+                const endDate = new Date(monday);
+                endDate.setDate(monday.getDate() + endOffset);
+                e.valueAsDate = endDate;
+            } else if (type === 'nextWeek') {
+                // Find Next Monday
+                // First get this monday
+                const day = t.getDay();
+                const diff = t.getDate() - day + (day == 0 ? -6 : 1);
+                const thisMonday = new Date(t);
+                thisMonday.setDate(diff);
+
+                const nextMonday = new Date(thisMonday);
+                nextMonday.setDate(thisMonday.getDate() + 7);
+                s.valueAsDate = nextMonday;
+
+                const endOffset = includeWeekend ? 6 : 4;
+                const endDate = new Date(nextMonday);
+                endDate.setDate(nextMonday.getDate() + endOffset);
+                e.valueAsDate = endDate;
+            }
+        }
+
+        function log(msg, type = 'info') {
+            const el = document.getElementById('statusArea');
+            el.classList.remove('hidden');
+            const color = type === 'error' ? 'text-red-300' : 'text-green-300';
+            const icon = type === 'error' ? '❌' : (type === 'success' ? '✅' : 'ℹ️');
+            el.innerHTML += `<div>${icon} ${msg}</div>`;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        async function processAndDownload(mode) {
+            if (!selectedFile) {
+                alert('먼저 PDF 파일을 선택해주세요.');
+                return;
+            }
+
+            // UI Prep
+            const btnZip = document.getElementById('btnDownload');
+            const btnView = document.getElementById('btnView');
+            const gallery = document.getElementById('imageGallery');
+            const galleryGrid = document.getElementById('galleryGrid');
+            const statusArea = document.getElementById('statusArea');
+
+            // Reset
+            statusArea.innerHTML = '';
+            statusArea.classList.remove('hidden');
+            gallery.classList.add('hidden');
+            galleryGrid.innerHTML = '';
+
+            // Lock UI
+            btnZip.disabled = true; btnView.disabled = true;
+            const originalZipText = btnZip.innerHTML;
+            const originalViewText = btnView.innerHTML;
+            btnZip.innerHTML = '⏳ 처리중...';
+            btnView.innerHTML = '⏳ 처리중...';
+
+            try {
+                // 1. Inputs
+                const start = new Date(document.getElementById('startDate').value);
+                const end = new Date(document.getElementById('endDate').value);
+                const includeWeekend = document.getElementById('includeWeekend').checked;
+                const m1 = parseInt(monthSelect.value);
+                const offset = parseInt(document.getElementById('month2Offset').value) || 0;
+
+                if (start > end) throw new Error("시작일이 종료일보다 늦습니다.");
+
+                // 2. Load PDF
+                const arrayBuffer = await selectedFile.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                log(`PDF 로드됨: ${selectedFile.name} (${pdf.numPages}페이지)`);
+
+                // 3. Process
+                const zip = mode === 'zip' ? new JSZip() : null;
+                const canvas = document.getElementById('renderCanvas');
+                const ctx = canvas.getContext('2d');
+                let count = 0;
+
+                if (mode === 'view') gallery.classList.remove('hidden');
+
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                    // Check weekend Logic
+                    // User says: 'week' preset is Mon-Fri. But checkbox allows Weekend.
+                    // If manually range selected, we honor range.
+                    // But if Checkbox is OFF, we skip Sat/Sun?
+                    // Proposal: Checkbox mainly serves "Include Worship Page" AND "Extend Preset to Sun".
+                    // But for manual range, let's keep it simple: If checkbox OFF, skip Sat/Sun.
+                    if (!includeWeekend && (d.getDay() === 0 || d.getDay() === 6)) continue;
+
+                    const pages = getPagesForDate(d, m1, offset);
+
+                    for (const pg of pages) {
+                        if (pg.num > pdf.numPages) {
+                            log(`${d.toLocaleDateString()} : 페이지 초과 (Page ${pg.num})`, 'error');
+                            continue;
+                        }
+
+                        // If it's worship page, skip if checkbox is unchecked
+                        if (pg.type === 'worship' && !includeWeekend) continue;
+
+                        // Render
+                        const page = await pdf.getPage(pg.num);
+                        const viewport = page.getViewport({ scale: 2.0 });
+                        canvas.width = viewport.width;
+                        canvas.height = viewport.height;
+                        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+                        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+
+                        let fileName = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                        if (pg.type === 'worship') fileName += '-worship';
+                        fileName += '.jpg';
+
+                        if (mode === 'zip') {
+                            zip.file(fileName, blob);
+                            log(`${d.getMonth() + 1}/${d.getDate()} ${pg.type === 'worship' ? '(예배)' : ''} 추출 완료`);
+                        } else {
+                            // View Mode
+                            const url = URL.createObjectURL(blob);
+                            const card = document.createElement('div');
+                            card.className = "bg-white p-3 rounded-lg shadow border border-slate-200";
+                            card.innerHTML = `
+                                <div class="font-bold text-center mb-2 text-church-600">
+                                    ${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} 
+                                    ${pg.type === 'worship' ? '<span class="text-xs bg-orange-100 text-orange-600 px-1 rounded">가정예배</span>' : ''}
+                                </div>
+                                <img src="${url}" class="w-full rounded-md shadow-inner mb-3 border">
+                                <button onclick="downloadImage(this)" data-filename="${fileName}" class="block w-full py-3 bg-church-50 text-church-600 font-bold text-center rounded-lg hover:bg-church-100 transition cursor-pointer border border-church-200">
+                                    ⬇️ 내 폰에 저장 (다운로드)
+                                </button>
+                            `;
+                            // Store blob for download button usage
+                            card.querySelector('button').blobData = blob;
+                            galleryGrid.appendChild(card);
+                        }
+                    }
+                    count++;
+                }
+
+                if (count === 0) throw new Error("추출할 이미지가 없습니다.");
+
+                if (mode === 'zip') {
+                    log(`ZIP 압축 중...`);
+                    const zipBlob = await zip.generateAsync({ type: "blob" });
+                    saveAs(zipBlob, `묵상_${start.toISOString().split('T')[0]}_${end.toISOString().split('T')[0]}.zip`);
+                    log(`다운로드 완료!`, 'success');
+                } else {
+                    log(`${count}장 추출 완료. 아래에서 확인하세요.`, 'success');
+                    gallery.scrollIntoView({ behavior: 'smooth' });
+                }
+
+            } catch (e) {
+                log(`오류: ${e.message}`, 'error');
+                console.error(e);
+            } finally {
+                btnZip.disabled = false; btnView.disabled = false;
+                btnZip.innerHTML = originalZipText; btnView.innerHTML = originalViewText;
+            }
+        }
+        // Helper for iOS/Cross-browser download
+        function downloadImage(btn) {
+            if (btn.blobData) {
+                saveAs(btn.blobData, btn.dataset.filename);
+            } else {
+                alert('이미지 데이터를 찾을 수 없습니다.');
+            }
+        }
+    </script>
+</body>
+
+</html>
